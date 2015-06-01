@@ -1,4 +1,3 @@
-//Document initialize functionettes
 /**************************************************************************************************
 Target Hardware:		PIC24Fxxxx
 Code assumptions:
@@ -36,20 +35,20 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 /************* Module Definitions ***************/
 /************* Other  Definitions ***************/
 
-void CTMU_Initialize(void)
+void Configure_CTMU(void)
 {
 	//CTMUCON
-	CTMUCONbits.CTMUEN		= 0;
-	CTMUCONbits.CTMUSIDL	= 0;
-	CTMUCONbits.TGEN		= 0;
-	CTMUCONbits.EDGEN		= 0;
-	CTMUCONbits.EDGSEQEN	= 0;
-	CTMUCONbits.IDISSEN		= 0;
-	CTMUCONbits.CTTRIG		= 0;
+	CTMUCONbits.CTMUEN		= 0; //make sure CTMU is disabled
+	CTMUCONbits.CTMUSIDL	= 0; //CTMU continues to run in idle mode
+	CTMUCONbits.TGEN		= 0; //disable edge delay generation mode of the CTMU
+	CTMUCONbits.EDGEN		= 0; //edges are blocked
+	CTMUCONbits.EDGSEQEN	= 0; //edge sequence not needed
+	CTMUCONbits.IDISSEN		= 0; //Do not ground the current source
+	CTMUCONbits.CTTRIG		= 0; //Trigger Output is disabled
 	CTMUCONbits.EDG2POL		= 0;
-	CTMUCONbits.EDG2SEL		= 0;
+	CTMUCONbits.EDG2SEL		= 0; //Edge2 Src = OC1 (don?t care)
 	CTMUCONbits.EDG1POL		= 0;
-	CTMUCONbits.EDG1SEL		= 0;
+	CTMUCONbits.EDG1SEL		= 0; //Edge1 Src = Timer1 (don?t care)
 
 	//CTMUICON
 	CTMUICONbits.IRNG		= 3; //55uA
@@ -62,24 +61,29 @@ void CTMU_Initialize(void)
 void CTMU_Start(int channel)
 {
 	int loop;
+	capacitivePresense = A2D_Value(channel);
+
+	TRISBbits.TRISB4 = 0;
+	if(capacitivePresense < 715)
+		LATBbits.LATB4 = 1;
+	else
+		LATBbits.LATB4 = 0;
 
 	AD1CON1bits.ADON = 0;
 	AD1CON3bits.SAMC = 0b00001;
 	AD1CON1bits.ADON = 1;
 
 	//1.
-//	AD1PCFGLbits.PCFG3 = ~0;
-//	AD1PCFGL |= 1 << channel;
-//	LATBbits.LATB3 = 0;
-//	TRISBbits.TRISB3 = 0;
-//	for (loop = 0; loop < 100; loop++) //Delay for CTMU charge time
+	AD1PCFGLbits.PCFG3 = ~0;
+	LATBbits.LATB3 = 0;
+	TRISBbits.TRISB3 = 0;
+	for (loop = 0; loop < 100; loop++) //Delay for CTMU charge time
 		Nop();
 
 	//2.
-//	AD1PCFGLbits.PCFG3 = 0;
-//	AD1PCFGL &= ~(1 << channel);
-//	TRISBbits.TRISB3 = ~0;
-	AD1CHS = channel;
+	AD1PCFGLbits.PCFG3 = 0;
+	TRISBbits.TRISB3 = ~0;
+	AD1CHS = 3;
 
 	//3.
 	AD1CSSL |= 1 << channel;
