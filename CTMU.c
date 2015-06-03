@@ -35,7 +35,7 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 /************* Module Definitions ***************/
 /************* Other  Definitions ***************/
 
-void Configure_CTMU(void)
+void CTMU_Initialize(void)
 {
 	//CTMUCON
 	CTMUCONbits.CTMUEN		= 0; //make sure CTMU is disabled
@@ -61,69 +61,39 @@ void Configure_CTMU(void)
 void CTMU_Start(int channel)
 {
 	int loop;
-	capacitivePresense = A2D_Value(channel);
 
-	TRISBbits.TRISB4 = 0;
-	if(capacitivePresense < 715)
-		LATBbits.LATB4 = 1;
-	else
-		LATBbits.LATB4 = 0;
+	AD1CHSbits.CH0SA = channel;
+	AD1CHSbits.CH0SB = channel;
+	AD1CSSL |= 1 << (channel);
 
-	AD1CON1bits.ADON = 0;
-	AD1CON3bits.SAMC = 0b00001;
-	AD1CON1bits.ADON = 1;
+	//1. Configure for sampling
+	AD1PCFG &= ~(1 << channel);	//Configure pin for analog mode
+	TRISB |= 1 << (channel);	//Set pin to input
 
-	//1.
-	AD1PCFGLbits.PCFG3 = ~0;
-	LATBbits.LATB3 = 0;
-	TRISBbits.TRISB3 = 0;
-	for (loop = 0; loop < 100; loop++) //Delay for CTMU charge time
-		Nop();
-
-	//2.
-	AD1PCFGLbits.PCFG3 = 0;
-	TRISBbits.TRISB3 = ~0;
-	AD1CHS = 3;
-
-	//3.
-	AD1CSSL |= 1 << channel;
-
-	//4.
-	CTMUCONbits.IDISSEN = 1;
-
-	//5.
-	Nop();	Nop();	Nop();	Nop();	Nop();
-
-	//6.
-	CTMUCONbits.IDISSEN = 0;
-
-//	//7.
+	//2. Start sampling the A2D
 	AD1CON1bits.SAMP = 1;
 
-	//8.
+	//3. initiate charging of circuit
 	CTMUCONbits.EDG2STAT = 0; // Make sure edge2 is 0
 	CTMUCONbits.EDG1STAT = 1; // Set edge1 - Start Charge
 
-	//9.
-	for (loop = 0; loop < 10; loop++) //Delay for CTMU charge time
+	//4. Wait for circuit to charge
+	for (loop = 0; loop < 15; loop++) //Delay for CTMU charge time
 		Nop();
 
-	//10.
+	//5. Stop charging and finish sampling
 	CTMUCONbits.EDG1STAT = 0; //Clear edge1 - Stop Charge
 	AD1CON1bits.SAMP = 0;
-
-	//11.
 
 	return;
 }
 
-void CTMU_Stop(int channel)
+void CTMU_Discharge(int channel)
 {
-//	//Set the pin to digital
-////	AD1PCFGL = 0xFFFF;
-//	AD1PCFGL |= (1 << CAPACITIVE_PRESENSE_SENSOR);
-//	Pin_Low(PIN_PRESENCE_SENSOR);
-//	Pin_Set_TRIS(PIN_PRESENCE_SENSOR, OUTPUT);
+	//Clear all residual charge from the circuit
+	AD1PCFG |= 1 << channel;	//Configure pin for digital mode
+	LATB &= ~(1 << (channel));	//Set pin to low
+	TRISB &= ~(1 << (channel));	//Set pin to output
 
 	return;
 }
