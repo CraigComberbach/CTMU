@@ -25,6 +25,7 @@
 /*************Function  Prototypes***************/
 void CTMU_Initialize(void);
 void CTMU_Start(int channel);
-void CTMU_Stop(int channel);
+void CTMU_Discharge(int channel);
+void Pin_Translation(enum A2D_PIN_DEFINITIONS analogPin, enum PIN_DEFINITIONS physicalPin);
 
 #endif	/* CTMU_H */

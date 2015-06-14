@@ -12,6 +12,7 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 #include "Config.h"
 #include "CTMU.h"
 #include "../Pins/Pins.h"
+#include "../A2D/A2D.h"
 
 /************* Library Definition ***************/
 /************* Semantic Versioning***************/
@@ -23,12 +24,36 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 	#error "lib-p_* has had a bug fix, you should check to see that you weren't relying on a bug for functionality"
 #endif
 
+//This code requires a specific version of the A2D library code to be guaranteed to work correctly
+#ifndef A2D_LIBRARY
+	#error "You need to include the A2D library for this code to compile"
+#elif A2D_MAJOR != 1
+	#error "A2D.c has had a change that loses some previously supported functionality"
+#elif A2D_MINOR != 1
+	#error "A2D.c has new features that this code may benefit from"
+#elif A2D_PATCH != 0
+	#error "A2D.c has had a bug fix, you should check to see that we weren't relying on a bug for functionality"
+#endif
+
+//This code requires a specific version of the Pins library code to be guaranteed to work correctly
+#ifndef PINS_LIBRARY
+	#error "You need to include the Pins library for this code to compile"
+#elif PINS_MAJOR != 2
+	#error "Pins.c has had a change that loses some previously supported functionality"
+#elif PINS_MINOR != 0
+	#error "Pins.c has new features that this code may benefit from"
+#elif PINS_PATCH != 0
+	#error "Pins.c has had a bug fix, you should check to see that we weren't relying on a bug for functionality"
+#endif
+
 /************Arbitrary Functionality*************/
 /*************   Magic  Numbers   ***************/
 /*************    Enumeration     ***************/
 /***********  Structure Definitions  ************/
 /***********State Machine Definitions************/
 /*************  Global Variables  ***************/
+int pinTranslator[NUMBER_OF_A2D_PINS];
+
 /*************Interrupt Prototypes***************/
 /*************Function  Prototypes***************/
 /************* Device Definitions ***************/
@@ -37,6 +62,11 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 
 void CTMU_Initialize(void)
 {
+	int loop;
+
+	for(loop = 0; loop < NUMBER_OF_A2D_PINS; ++loop)
+		pinTranslator[loop] = -1;
+
 	//CTMUCON
 	CTMUCONbits.CTMUEN		= 0; //make sure CTMU is disabled
 	CTMUCONbits.CTMUSIDL	= 0; //CTMU continues to run in idle mode
@@ -46,7 +76,7 @@ void CTMU_Initialize(void)
 	CTMUCONbits.IDISSEN		= 0; //Do not ground the current source
 	CTMUCONbits.CTTRIG		= 0; //Trigger Output is disabled
 	CTMUCONbits.EDG2POL		= 0;
-	CTMUCONbits.EDG2SEL		= 0; //Edge2 Src = OC1 (don?t care)
+	CTMUCONbits.EDG2SEL		= 0; //Edge2 Src = OC1 (don't care)
 	CTMUCONbits.EDG1POL		= 0;
 	CTMUCONbits.EDG1SEL		= 0; //Edge1 Src = Timer1 (don?t care)
 
@@ -58,17 +88,23 @@ void CTMU_Initialize(void)
 	return;
 }
 
+void Pin_Translation(enum A2D_PIN_DEFINITIONS analogPin, enum PIN_DEFINITIONS physicalPin)
+{
+	pinTranslator[analogPin] = physicalPin;
+
+	return;
+}
+
 void CTMU_Start(int channel)
 {
 	int loop;
 
-	AD1CHSbits.CH0SA = channel;
-	AD1CHSbits.CH0SB = channel;
-	AD1CSSL |= 1 << (channel);
-
 	//1. Configure for sampling
 	AD1PCFG &= ~(1 << channel);	//Configure pin for analog mode
-	TRISB |= 1 << (channel);	//Set pin to input
+	if(pinTranslator[channel] = -1)
+		TRISB |= 1 << (channel);	//Set pin to input
+	else
+		Pin_Set_TRIS(pinTranslator[channel], INPUT);
 
 	//2. Start sampling the A2D
 	AD1CON1bits.SAMP = 1;
@@ -92,8 +128,17 @@ void CTMU_Discharge(int channel)
 {
 	//Clear all residual charge from the circuit
 	AD1PCFG |= 1 << channel;	//Configure pin for digital mode
-	LATB &= ~(1 << (channel));	//Set pin to low
-	TRISB &= ~(1 << (channel));	//Set pin to output
+
+	if(pinTranslator[channel] = -1)
+	{
+		LATB &= ~(1 << (channel));	//Set pin to low
+		TRISB &= ~(1 << (channel));	//Set pin to output
+	}
+	else
+	{
+		Pin_Low(pinTranslator[channel]);
+		Pin_Set_TRIS(pinTranslator[channel],OUTPUT);
+	}
 
 	return;
 }
