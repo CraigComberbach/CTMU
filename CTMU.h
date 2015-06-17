@@ -27,5 +27,6 @@ void CTMU_Initialize(void);
 void CTMU_Start(int channel);
 void CTMU_Discharge(int channel);
 void Pin_Translation(enum A2D_PIN_DEFINITIONS analogPin, enum PIN_DEFINITIONS physicalPin);
+int CTMU_Auto_Calibrate(int channel, int currentValue, int targetValue);
 
 #endif	/* CTMU_H */

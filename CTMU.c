@@ -53,6 +53,7 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 /***********State Machine Definitions************/
 /*************  Global Variables  ***************/
 int pinTranslator[NUMBER_OF_A2D_PINS];
+int calibratedTrigger[NUMBER_OF_A2D_PINS];
 
 /*************Interrupt Prototypes***************/
 /*************Function  Prototypes***************/
@@ -60,12 +61,32 @@ int pinTranslator[NUMBER_OF_A2D_PINS];
 /************* Module Definitions ***************/
 /************* Other  Definitions ***************/
 
+int CTMU_Auto_Calibrate(int channel, int currentValue, int targetValue)
+{
+	static unsigned int born = 1;
+
+	if(born)
+	{
+		if(currentValue == targetValue)
+			born = 0;
+		else if(currentValue > targetValue)
+			calibratedTrigger[channel] -= 1;
+		else if(currentValue < targetValue)
+			calibratedTrigger[channel] += 1;
+	}
+
+	return born;
+}
+
 void CTMU_Initialize(void)
 {
 	int loop;
 
 	for(loop = 0; loop < NUMBER_OF_A2D_PINS; ++loop)
+	{
 		pinTranslator[loop] = -1;
+		calibratedTrigger[loop] = 15;
+	}
 
 	//CTMUCON
 	CTMUCONbits.CTMUEN		= 0; //make sure CTMU is disabled
@@ -101,7 +122,7 @@ void CTMU_Start(int channel)
 
 	//1. Configure for sampling
 	AD1PCFG &= ~(1 << channel);	//Configure pin for analog mode
-	if(pinTranslator[channel] = -1)
+	if(pinTranslator[channel] == -1)
 		TRISB |= 1 << (channel);	//Set pin to input
 	else
 		Pin_Set_TRIS(pinTranslator[channel], INPUT);
@@ -114,7 +135,7 @@ void CTMU_Start(int channel)
 	CTMUCONbits.EDG1STAT = 1; // Set edge1 - Start Charge
 
 	//4. Wait for circuit to charge
-	for (loop = 0; loop < 15; loop++) //Delay for CTMU charge time
+	for (loop = 0; loop < calibratedTrigger[channel]; loop++) //Delay for CTMU charge time
 		Nop();
 
 	//5. Stop charging and finish sampling
@@ -129,7 +150,7 @@ void CTMU_Discharge(int channel)
 	//Clear all residual charge from the circuit
 	AD1PCFG |= 1 << channel;	//Configure pin for digital mode
 
-	if(pinTranslator[channel] = -1)
+	if(pinTranslator[channel] == -1)
 	{
 		LATB &= ~(1 << (channel));	//Set pin to low
 		TRISB &= ~(1 << (channel));	//Set pin to output
