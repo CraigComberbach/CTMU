@@ -54,6 +54,8 @@ vnext	Y-M-D	Craig Comberbach	Compiler: C30 v3.31	Optimization: 0	IDE: MPLABx 1.9
 /*************  Global Variables  ***************/
 int pinTranslator[NUMBER_OF_A2D_PINS];
 int calibratedTrigger[NUMBER_OF_A2D_PINS];
+unsigned long current_nA = 0;
+unsigned long calibrationResistorOhms = 0;
 
 /*************Interrupt Prototypes***************/
 /*************Function  Prototypes***************/
@@ -67,26 +69,30 @@ int CTMU_Auto_Calibrate(int channel, int currentValue, int targetValue)
 
 	if(born)
 	{
-		if(currentValue == targetValue)
+		if(currentValue >= targetValue)
+		{
 			born = 0;
-		else if(currentValue > targetValue)
-			calibratedTrigger[channel] -= 1;
+			calibratedTrigger[channel]--;
+		}
 		else if(currentValue < targetValue)
-			calibratedTrigger[channel] += 1;
+			calibratedTrigger[channel]++;
 	}
 
 	return born;
 }
 
-void CTMU_Initialize(void)
+void CTMU_Initialize(unsigned long valueOhms)
 {
 	int loop;
 
 	for(loop = 0; loop < NUMBER_OF_A2D_PINS; ++loop)
 	{
 		pinTranslator[loop] = -1;
-		calibratedTrigger[loop] = 15;
+		calibratedTrigger[loop] = 0;
 	}
+
+	//Specify the value of the calibration resistor in ohms
+	calibrationResistorOhms = valueOhms;
 
 	//CTMUCON
 	CTMUCONbits.CTMUEN		= 0; //make sure CTMU is disabled
@@ -121,25 +127,22 @@ void CTMU_Start(int channel)
 	int loop;
 
 	//1. Configure for sampling
-	AD1PCFG &= ~(1 << channel);	//Configure pin for analog mode
-	if(pinTranslator[channel] == -1)
-		TRISB |= 1 << (channel);	//Set pin to input
-	else
-		Pin_Set_TRIS(pinTranslator[channel], INPUT);
+	AD1PCFG &= ~(1 << channel);					//Configure pin for analog mode
+	Pin_Set_TRIS(pinTranslator[channel], INPUT);//Set pin to input
 
 	//2. Start sampling the A2D
 	AD1CON1bits.SAMP = 1;
 
 	//3. initiate charging of circuit
-	CTMUCONbits.EDG2STAT = 0; // Make sure edge2 is 0
-	CTMUCONbits.EDG1STAT = 1; // Set edge1 - Start Charge
-
+	CTMUCONbits.EDG2STAT = 0; //Make sure edge2 is 0
+	CTMUCONbits.EDG1STAT = 1; //Set edge1 - Start Charge
+ClrWdt();
 	//4. Wait for circuit to charge
 	for (loop = 0; loop < calibratedTrigger[channel]; loop++) //Delay for CTMU charge time
 		Nop();
-
+ClrWdt();
 	//5. Stop charging and finish sampling
-	CTMUCONbits.EDG1STAT = 0; //Clear edge1 - Stop Charge
+//	CTMUCONbits.EDG1STAT = 0; //Clear edge1 - Stop Charge
 	AD1CON1bits.SAMP = 0;
 
 	return;
@@ -148,18 +151,37 @@ void CTMU_Start(int channel)
 void CTMU_Discharge(int channel)
 {
 	//Clear all residual charge from the circuit
-	AD1PCFG |= 1 << channel;	//Configure pin for digital mode
+	//Configure pin for digital mode
+	AD1PCFG |= 1 << channel;
 
-	if(pinTranslator[channel] == -1)
+	//Set pin to output, then low
+	Pin_Low(pinTranslator[channel]);
+	Pin_Set_TRIS(pinTranslator[channel],OUTPUT);
+
+	return;
+}
+
+void CTMU_Calibrate_Constant_Current_Supply(int channel)
+{
+	//We need to ensure that the calibration resistor has been accounted for
+	if(calibrationResistorOhms != 0)
 	{
-		LATB &= ~(1 << (channel));	//Set pin to low
-		TRISB &= ~(1 << (channel));	//Set pin to output
-	}
-	else
-	{
-		Pin_Low(pinTranslator[channel]);
-		Pin_Set_TRIS(pinTranslator[channel],OUTPUT);
+		//Convert the A2D reading into a known calibrated current
+		current_nA = (A2D_Value(channel) * 62500);	//Make it as big as possible to retain resolution later
+		current_nA += 55095;						//Add an algorithmically chosen value to allow for proper rounding and reduce the error to +/- 887 pA
+//		current_nA /= calibrationResistorOhms;		//Divide by the known resistance
+		current_nA *= 25;							//Final multiplier to allow the final division to occur
+		current_nA /= 31;							//Final answer, accurate to 1nA +/- 0.887nA
 	}
 
 	return;
+}
+
+int CTMU_Calibration_Format(int value)
+{
+	/*Don't do anything. I have to use raw format, because the A2D library will not accept a uV format because it exceeds
+	 and integer in size. But I don't want to have to explain that to whoever uses the library. It is easier to just say
+	 "Use the specific CTMU Calibration Format" and have everything work out. Besides, it makes the code easier to read
+	 that way.*/
+	return value;
 }
